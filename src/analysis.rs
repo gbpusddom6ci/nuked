@@ -1,5 +1,6 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use chrono::{Duration, NaiveDateTime, NaiveTime};
+use litchi::iwa::Document;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -83,8 +84,21 @@ pub struct Report {
     pub trades: Vec<TradeReport>,
 }
 
+pub fn analyze_input(bytes: &[u8], file_name: Option<&str>) -> Result<Report> {
+    let csv_bytes = if is_numbers_file(file_name) {
+        numbers_to_csv(bytes)?
+    } else {
+        bytes.to_vec()
+    };
+
+    analyze_csv(&csv_bytes)
+}
+
 pub fn analyze_csv(bytes: &[u8]) -> Result<Report> {
     let mut candles = parse_csv(bytes)?;
+    if candles.is_empty() {
+        bail!("No valid rows parsed from input.");
+    }
     candles.sort_by_key(|c| c.time);
 
     let timeframe_minutes = infer_timeframe_minutes(&candles);
@@ -103,13 +117,16 @@ pub fn analyze_csv(bytes: &[u8]) -> Result<Report> {
 
 fn parse_csv(bytes: &[u8]) -> Result<Vec<Candle>> {
     let mut rdr = csv::ReaderBuilder::new()
-        .has_headers(true)
+        .has_headers(false)
         .flexible(true)
         .from_reader(bytes);
 
     let mut candles = Vec::new();
     for result in rdr.records() {
-        let record = result.context("failed to read csv record")?;
+        let record = match result {
+            Ok(record) => record,
+            Err(_) => continue,
+        };
         if record.len() < 5 {
             continue;
         }
@@ -120,9 +137,9 @@ fn parse_csv(bytes: &[u8]) -> Result<Vec<Candle>> {
         }
 
         let time_str = raw_time.trim_matches('"');
-        let parsed_time = match NaiveDateTime::parse_from_str(time_str, "%Y-%m-%d %H:%M") {
-            Ok(t) => t,
-            Err(_) => continue,
+        let parsed_time = match parse_time(time_str) {
+            Some(t) => t,
+            None => continue,
         };
         let time = parsed_time + Duration::hours(1);
 
@@ -153,6 +170,58 @@ fn parse_csv(bytes: &[u8]) -> Result<Vec<Candle>> {
     }
 
     Ok(candles)
+}
+
+fn parse_time(raw: &str) -> Option<NaiveDateTime> {
+    let raw = raw.trim();
+    let formats = [
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M:%S%.f",
+    ];
+    for fmt in formats {
+        if let Ok(parsed) = NaiveDateTime::parse_from_str(raw, fmt) {
+            return Some(parsed);
+        }
+    }
+    None
+}
+
+fn is_numbers_file(file_name: Option<&str>) -> bool {
+    let Some(name) = file_name else {
+        return false;
+    };
+    name.to_ascii_lowercase().ends_with(".numbers")
+}
+
+fn numbers_to_csv(bytes: &[u8]) -> Result<Vec<u8>> {
+    let doc = Document::from_bytes(bytes).context("failed to parse .numbers file")?;
+    let structured = doc
+        .extract_structured_data()
+        .context("failed to extract tables from .numbers")?;
+
+    if structured.tables.is_empty() {
+        bail!("No tables found in .numbers file.");
+    }
+
+    let mut best_csv: Option<Vec<u8>> = None;
+    let mut best_len = 0usize;
+
+    for table in structured.tables {
+        let csv = table.to_csv();
+        let candles = parse_csv(csv.as_bytes()).unwrap_or_default();
+        let len = candles.len();
+        if len > best_len {
+            best_len = len;
+            best_csv = Some(csv.into_bytes());
+        }
+    }
+
+    if let Some(csv) = best_csv {
+        Ok(csv)
+    } else {
+        bail!("No valid table found in .numbers file.")
+    }
 }
 
 fn parse_f64(value: Option<&str>) -> Option<f64> {

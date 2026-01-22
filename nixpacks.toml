@@ -1,3 +1,6 @@
+[phases.setup]
+nixPkgs = ["protobuf"]
+
 [phases.build]
 cmds = [
   "cargo build --release",

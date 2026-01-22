@@ -271,17 +271,17 @@
         <div class="pill">R-based report</div>
       </div>
       <div class="note">
-        CSV format: Time, Open, High, Low, Latest, ... (Latest is treated as Close).
+        CSV or Numbers format: Time, Open, High, Low, Latest (Latest is treated as Close).
       </div>
     </section>
 
     <section class="panel uploader">
       <h2>Run Simulation</h2>
-      <p>Drop your CSV and review the R report. Only ASCII text used in this UI.</p>
+      <p>Drop your CSV or Numbers file and review the R report. Only ASCII text used in this UI.</p>
       <form id="upload-form" class="form-row">
         <div class="file-field">
-          <label for="file">CSV file</label>
-          <input id="file" name="file" type="file" accept=".csv" required />
+          <label for="file">CSV or Numbers file</label>
+          <input id="file" name="file" type="file" accept=".csv,.numbers" required />
         </div>
         <button type="submit" id="run-btn">Analyze</button>
       </form>
