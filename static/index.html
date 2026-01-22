@@ -260,9 +260,9 @@
     <section class="panel hero">
       <h1>EURUSD Body Lab</h1>
       <p>
-        Upload a 15m or 1h CSV/Numbers file (UTC-6), the engine shifts it to UTC-5
-        and simulates the body-only X setup. 15m uses the 00:00-11:30 window and
-        14:00 time exit; 1h runs without time limits.
+        Upload a CSV/Numbers file (UTC-6), choose 15m or 1h, and the engine shifts
+        it to UTC-5 before running the body-only X setup. 15m uses the 00:00-11:30
+        window and 14:00 time exit; 1h runs without time limits.
       </p>
       <div class="pill-list">
         <div class="pill">Body cover X only</div>
@@ -283,6 +283,13 @@
         <div class="file-field">
           <label for="file">CSV or Numbers file</label>
           <input id="file" name="file" type="file" accept=".csv,.numbers,.zip" required />
+        </div>
+        <div class="file-field">
+          <label for="timeframe">Timeframe</label>
+          <select id="timeframe" name="timeframe" required>
+            <option value="15m" selected>15m</option>
+            <option value="1h">1h</option>
+          </select>
         </div>
         <button type="submit" id="run-btn">Analyze</button>
       </form>

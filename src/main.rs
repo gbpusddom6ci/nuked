@@ -38,12 +38,15 @@ async fn index() -> Html<&'static str> {
 async fn analyze(mut multipart: Multipart) -> Result<Json<analysis::Report>, (StatusCode, String)> {
     let mut file_bytes: Option<Vec<u8>> = None;
     let mut file_name: Option<String> = None;
+    let mut timeframe: Option<String> = None;
 
     while let Some(field) = multipart.next_field().await.map_err(to_bad_request)? {
         if field.name() == Some("file") {
             file_name = field.file_name().map(|name| name.to_string());
             let data = field.bytes().await.map_err(to_bad_request)?;
             file_bytes = Some(data.to_vec());
+        } else if field.name() == Some("timeframe") {
+            timeframe = Some(field.text().await.map_err(to_bad_request)?);
         }
     }
 
@@ -54,7 +57,9 @@ async fn analyze(mut multipart: Multipart) -> Result<Json<analysis::Report>, (St
         )
     })?;
 
-    let report = analysis::analyze_input(&bytes, file_name.as_deref()).map_err(to_bad_request)?;
+    let report =
+        analysis::analyze_input(&bytes, file_name.as_deref(), timeframe.as_deref())
+            .map_err(to_bad_request)?;
     Ok(Json(report))
 }
 

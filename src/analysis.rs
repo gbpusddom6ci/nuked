@@ -84,22 +84,32 @@ pub struct Report {
     pub trades: Vec<TradeReport>,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum TimeframeChoice {
+    M15,
+    H1,
+}
+
 struct StrategyRules {
     entry_window: Option<(NaiveTime, NaiveTime)>,
     time_exit: Option<NaiveTime>,
 }
 
-pub fn analyze_input(bytes: &[u8], file_name: Option<&str>) -> Result<Report> {
+pub fn analyze_input(
+    bytes: &[u8],
+    file_name: Option<&str>,
+    timeframe: Option<&str>,
+) -> Result<Report> {
     let csv_bytes = if is_numbers_file(file_name) {
         numbers_to_csv(bytes)?
     } else {
         bytes.to_vec()
     };
 
-    analyze_csv(&csv_bytes)
+    analyze_csv(&csv_bytes, timeframe)
 }
 
-pub fn analyze_csv(bytes: &[u8]) -> Result<Report> {
+pub fn analyze_csv(bytes: &[u8], timeframe: Option<&str>) -> Result<Report> {
     let mut candles = parse_csv(bytes)?;
     if candles.is_empty() {
         bail!("No valid rows parsed from input.");
@@ -108,7 +118,7 @@ pub fn analyze_csv(bytes: &[u8]) -> Result<Report> {
 
     let timeframe_minutes = infer_timeframe_minutes(&candles);
     let x_dirs = compute_x_dirs(&candles);
-    let rules = determine_rules(timeframe_minutes);
+    let rules = determine_rules(timeframe_minutes, timeframe);
 
     let (mut trades, skipped) = simulate_trades(&candles, &x_dirs, &rules);
     trades.sort_by(|a, b| a.entry_time.cmp(&b.entry_time));
@@ -426,8 +436,15 @@ fn simulate_trades(
     (trades, skipped)
 }
 
-fn determine_rules(timeframe_minutes: Option<i64>) -> StrategyRules {
-    if matches!(timeframe_minutes, Some(15)) {
+fn determine_rules(timeframe_minutes: Option<i64>, override_value: Option<&str>) -> StrategyRules {
+    let choice = override_value.and_then(TimeframeChoice::from_str);
+    let is_15m = match choice {
+        Some(TimeframeChoice::M15) => true,
+        Some(TimeframeChoice::H1) => false,
+        None => matches!(timeframe_minutes, Some(15)),
+    };
+
+    if is_15m {
         StrategyRules {
             entry_window: Some((
                 NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
@@ -439,6 +456,16 @@ fn determine_rules(timeframe_minutes: Option<i64>) -> StrategyRules {
         StrategyRules {
             entry_window: None,
             time_exit: None,
+        }
+    }
+}
+
+impl TimeframeChoice {
+    fn from_str(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "15m" | "m15" | "15" => Some(TimeframeChoice::M15),
+            "1h" | "h1" | "60" => Some(TimeframeChoice::H1),
+            _ => None,
         }
     }
 }
