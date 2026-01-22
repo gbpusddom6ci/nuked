@@ -191,10 +191,17 @@ fn is_numbers_file(file_name: Option<&str>) -> bool {
     let Some(name) = file_name else {
         return false;
     };
-    name.to_ascii_lowercase().ends_with(".numbers")
+    let lower = name.to_ascii_lowercase();
+    lower.ends_with(".numbers") || lower.ends_with(".zip")
 }
 
 fn numbers_to_csv(bytes: &[u8]) -> Result<Vec<u8>> {
+    if !looks_like_zip(bytes) {
+        bail!(
+            "This .numbers file looks like a package directory. Export as CSV or compress it to .zip first."
+        );
+    }
+
     let doc = Document::from_bytes(bytes).context("failed to parse .numbers file")?;
     let structured = doc
         .extract_structured_data()
@@ -224,6 +231,12 @@ fn numbers_to_csv(bytes: &[u8]) -> Result<Vec<u8>> {
     }
 }
 
+fn looks_like_zip(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"PK\x03\x04")
+        || bytes.starts_with(b"PK\x05\x06")
+        || bytes.starts_with(b"PK\x07\x08")
+}
+
 fn parse_f64(value: Option<&str>) -> Option<f64> {
     let raw = value?.trim().trim_matches('"');
     if raw.is_empty() {
@@ -245,7 +258,7 @@ fn compute_x_dirs(candles: &[Candle]) -> Vec<Option<Direction>> {
         let curr_low = curr.open.min(curr.close);
         let curr_high = curr.open.max(curr.close);
 
-        if curr_low <= prev_low && curr_high >= prev_high {
+        if curr_low < prev_low && curr_high > prev_high {
             if curr.close > curr.open {
                 x_dirs[i] = Some(Direction::Long);
             } else if curr.close < curr.open {
