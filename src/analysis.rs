@@ -104,6 +104,7 @@ pub fn analyze_csv(bytes: &[u8]) -> Result<Report> {
 fn parse_csv(bytes: &[u8]) -> Result<Vec<Candle>> {
     let mut rdr = csv::ReaderBuilder::new()
         .has_headers(true)
+        .flexible(true)
         .from_reader(bytes);
 
     let mut candles = Vec::new();
