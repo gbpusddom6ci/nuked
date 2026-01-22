@@ -1,26 +1,34 @@
-# AGENTS.md instructions for /Users/malware/nuked
+# nuked
 
-<INSTRUCTIONS>
-## Skills
-A skill is a set of local instructions to follow that is stored in a `SKILL.md` file. Below is the list of skills that can be used. Each entry includes a name, description, and file path so you can open the source for full instructions when using a specific skill.
-### Available skills
-- skill-creator: Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Codex's capabilities with specialized knowledge, workflows, or tool integrations. (file: /Users/malware/.codex/skills/.system/skill-creator/SKILL.md)
-- skill-installer: Install Codex skills into $CODEX_HOME/skills from a curated list or a GitHub repo path. Use when a user asks to list installable skills, install a curated skill, or install a skill from another repo (including private repos). (file: /Users/malware/.codex/skills/.system/skill-installer/SKILL.md)
-### How to use skills
-- Discovery: The list above is the skills available in this session (name + description + file path). Skill bodies live on disk at the listed paths.
-- Trigger rules: If the user names a skill (with `$SkillName` or plain text) OR the task clearly matches a skill's description shown above, you must use that skill for that turn. Multiple mentions mean use them all. Do not carry skills across turns unless re-mentioned.
-- Missing/blocked: If a named skill isn't in the list or the path can't be read, say so briefly and continue with the best fallback.
-- How to use a skill (progressive disclosure):
-  1) After deciding to use a skill, open its `SKILL.md`. Read only enough to follow the workflow.
-  2) If `SKILL.md` points to extra folders such as `references/`, load only the specific files needed for the request; don't bulk-load everything.
-  3) If `scripts/` exist, prefer running or patching them instead of retyping large code blocks.
-  4) If `assets/` or templates exist, reuse them instead of recreating from scratch.
-- Coordination and sequencing:
-  - If multiple skills apply, choose the minimal set that covers the request and state the order you'll use them.
-  - Announce which skill(s) you're using and why (one short line). If you skip an obvious skill, say why.
-- Context hygiene:
-  - Keep context small: summarize long sections instead of pasting them; only load extra files when needed.
-  - Avoid deep reference-chasing: prefer opening only files directly linked from `SKILL.md` unless you're blocked.
-  - When variants exist (frameworks, providers, domains), pick only the relevant reference file(s) and note that choice.
-- Safety and fallback: If a skill can't be applied cleanly (missing files, unclear instructions), state the issue, pick the next-best approach, and continue.
-</INSTRUCTIONS>
+Rust web app that analyzes EURUSD 15m data using a body-only "X candle" strategy.
+Users upload CSV or Apple Numbers files; the server converts UTC-6 to UTC-5,
+simulates entries/exits, and returns an R-based report plus trade list.
+
+## Inputs
+- CSV: `Time,Open,High,Low,Latest,...` (Latest is treated as Close).
+- Numbers: `.numbers` or `.zip` exported from Numbers (tables are auto-detected).
+- Timezone: input is UTC-6, converted to UTC-5 for analysis.
+
+## Strategy Summary
+- X candle: current body strictly covers previous body (no equality).
+- Entry: next candle open after X candle.
+- Direction: X candle closes up = long, closes down = short.
+- SL: last 3 candles before entry (wick included), must be strictly broken to trigger.
+- TP: next opposite-direction X candle close (same-direction X does not close).
+- Entry window: 00:00 to 11:30 (UTC-5).
+- Time exit: if still open, close at 14:00 open (UTC-5).
+- Invalid trade: same candle hits SL and opposite X close.
+
+## Output
+- Summary metrics in R (total R, win rate, drawdown, etc.).
+- Trade list with entry/exit, SL, R multiple, hold time, exit reason.
+
+## Run Locally
+```bash
+cargo run
+```
+Open `http://127.0.0.1:3000` and upload a file.
+
+## Deploy (Railway)
+- Uses `PORT` env var and binds `0.0.0.0`.
+- `nixpacks.toml` installs protobuf for Numbers parsing.
