@@ -1,0 +1,9 @@
+[phases.build]
+cmds = [
+  "cargo build --release",
+  "mkdir -p bin",
+  "sh -c 'set -e; BIN=$(find target -path \"*/release/nuked\" -type f | head -n 1); test -n \"$BIN\"; cp \"$BIN\" bin/nuked'"
+]
+
+[start]
+cmd = "./bin/nuked"
