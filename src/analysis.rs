@@ -345,8 +345,8 @@ fn simulate_trades(
             }
 
             let sl_hit = match x_dir {
-                Direction::Long => candle.low <= sl,
-                Direction::Short => candle.high >= sl,
+                Direction::Long => candle.low < sl,
+                Direction::Short => candle.high > sl,
             };
 
             let opp_x = match x_dirs[j] {
