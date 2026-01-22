@@ -84,6 +84,11 @@ pub struct Report {
     pub trades: Vec<TradeReport>,
 }
 
+struct StrategyRules {
+    entry_window: Option<(NaiveTime, NaiveTime)>,
+    time_exit: Option<NaiveTime>,
+}
+
 pub fn analyze_input(bytes: &[u8], file_name: Option<&str>) -> Result<Report> {
     let csv_bytes = if is_numbers_file(file_name) {
         numbers_to_csv(bytes)?
@@ -103,8 +108,9 @@ pub fn analyze_csv(bytes: &[u8]) -> Result<Report> {
 
     let timeframe_minutes = infer_timeframe_minutes(&candles);
     let x_dirs = compute_x_dirs(&candles);
+    let rules = determine_rules(timeframe_minutes);
 
-    let (mut trades, skipped) = simulate_trades(&candles, &x_dirs);
+    let (mut trades, skipped) = simulate_trades(&candles, &x_dirs, &rules);
     trades.sort_by(|a, b| a.entry_time.cmp(&b.entry_time));
 
     let summary = summarize(&candles, timeframe_minutes, &trades);
@@ -273,6 +279,7 @@ fn compute_x_dirs(candles: &[Candle]) -> Vec<Option<Direction>> {
 fn simulate_trades(
     candles: &[Candle],
     x_dirs: &[Option<Direction>],
+    rules: &StrategyRules,
 ) -> (Vec<TradeReport>, Skipped) {
     let mut trades = Vec::new();
     let mut skipped = Skipped::default();
@@ -287,9 +294,12 @@ fn simulate_trades(
         }
 
         let entry_time = candles[entry_idx].time;
-        if !is_entry_window(entry_time) {
-            skipped.outside_window += 1;
-            continue;
+        if let Some((start, end)) = rules.entry_window {
+            let t = entry_time.time();
+            if t < start || t > end {
+                skipped.outside_window += 1;
+                continue;
+            }
         }
         if entry_idx < 3 {
             skipped.insufficient_history += 1;
@@ -319,11 +329,13 @@ fn simulate_trades(
             continue;
         }
 
-        let entry_date = entry_time.date();
-        let target_time = NaiveDateTime::new(
-            entry_date,
-            NaiveTime::from_hms_opt(14, 0, 0).unwrap(),
-        );
+        let (entry_date, target_time) = if let Some(time_exit) = rules.time_exit {
+            let entry_date = entry_time.date();
+            let target_time = NaiveDateTime::new(entry_date, time_exit);
+            (Some(entry_date), Some(target_time))
+        } else {
+            (None, None)
+        };
         let mut closed = false;
         let mut invalid = false;
         let mut exit_reason = ExitReason::Time;
@@ -332,16 +344,17 @@ fn simulate_trades(
 
         for j in entry_idx..candles.len() {
             let candle = &candles[j];
-            if candle.time.date() > entry_date {
-                break;
-            }
-
-            if candle.time >= target_time {
-                exit_time = candle.time;
-                exit_price = candle.open;
-                exit_reason = ExitReason::Time;
-                closed = true;
-                break;
+            if let (Some(entry_date), Some(target_time)) = (entry_date, target_time) {
+                if candle.time.date() > entry_date {
+                    break;
+                }
+                if candle.time >= target_time {
+                    exit_time = candle.time;
+                    exit_price = candle.open;
+                    exit_reason = ExitReason::Time;
+                    closed = true;
+                    break;
+                }
             }
 
             let sl_hit = match x_dir {
@@ -413,11 +426,21 @@ fn simulate_trades(
     (trades, skipped)
 }
 
-fn is_entry_window(time: NaiveDateTime) -> bool {
-    let t = time.time();
-    let start = NaiveTime::from_hms_opt(0, 0, 0).unwrap();
-    let end = NaiveTime::from_hms_opt(11, 30, 0).unwrap();
-    t >= start && t <= end
+fn determine_rules(timeframe_minutes: Option<i64>) -> StrategyRules {
+    if matches!(timeframe_minutes, Some(15)) {
+        StrategyRules {
+            entry_window: Some((
+                NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
+                NaiveTime::from_hms_opt(11, 30, 0).unwrap(),
+            )),
+            time_exit: Some(NaiveTime::from_hms_opt(14, 0, 0).unwrap()),
+        }
+    } else {
+        StrategyRules {
+            entry_window: None,
+            time_exit: None,
+        }
+    }
 }
 
 fn summarize(candles: &[Candle], timeframe_minutes: Option<i64>, trades: &[TradeReport]) -> Summary {
