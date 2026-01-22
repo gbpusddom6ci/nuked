@@ -15,7 +15,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/", get(index))
         .route("/analyze", post(analyze));
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3000);
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     println!("Listening on http://{}", addr);
 
     axum::serve(
